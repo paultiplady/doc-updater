@@ -1,6 +1,8 @@
 """CLI interface for doc-updater."""
 
 import asyncio
+import logging
+import sys
 from enum import Enum
 from pathlib import Path
 
@@ -16,6 +18,21 @@ app = typer.Typer(
     help="Review and update living documents using LLMs.",
     no_args_is_help=True,
 )
+
+logger = logging.getLogger("doc_updater")
+
+
+def setup_logging(debug: bool = False) -> None:
+    """Configure logging for the CLI."""
+    level = logging.DEBUG if debug else logging.INFO
+    format_str = "%(message)s" if not debug else "%(levelname)s %(name)s: %(message)s"
+
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter(format_str))
+
+    root_logger = logging.getLogger("doc_updater")
+    root_logger.setLevel(level)
+    root_logger.addHandler(handler)
 
 
 class Provider(str, Enum):
@@ -61,8 +78,16 @@ def review(
         "-v",
         help="Show detailed output",
     ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        "-d",
+        help="Enable debug logging",
+    ),
 ) -> None:
     """Review and update documents marked with auto_review: true."""
+    setup_logging(debug=debug)
+
     # Build provider kwargs
     provider_kwargs: dict = {}
     if model:

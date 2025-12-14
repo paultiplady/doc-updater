@@ -76,16 +76,20 @@ class DocumentReviewer:
             Document instances that should be reviewed.
         """
         pattern = "**/*.md" if recursive else "*.md"
+        logger.debug(f"Searching for documents in {directory} with pattern {pattern}")
 
         for path in sorted(directory.glob(pattern)):
             try:
                 doc = Document.load(path)
                 if doc.should_review():
+                    logger.debug(f"Found document due for review: {path}")
                     yield doc
+                else:
+                    logger.debug(f"Skipping {path}: not due for review")
             except DocumentParseError as e:
-                logger.warning(f"Skipping {path}: {e}")
+                logger.debug(f"Skipping {path}: parse error - {e}")
             except Exception as e:
-                logger.warning(f"Unexpected error loading {path}: {e}")
+                logger.debug(f"Skipping {path}: unexpected error - {e}")
 
     async def review_document(
         self,
@@ -101,6 +105,8 @@ class DocumentReviewer:
         Returns:
             ReviewResult with outcome.
         """
+        logger.debug(f"Starting review of {document.path}")
+
         try:
             request = ReviewRequest(
                 content=document.content,
@@ -108,13 +114,20 @@ class DocumentReviewer:
                 user_prompt=document.config.review_prompt or DEFAULT_USER_PROMPT,
                 context=document.config.review_context,
             )
+            logger.debug(f"Built review request, content length: {len(document.content)} chars")
 
             response: ReviewResponse = await self.provider.review(request)
+            logger.debug(f"Received response, changed={response.changed}")
 
             if response.changed and not dry_run:
                 document.content = response.updated_content
                 document.update_last_reviewed()
                 document.save()
+                logger.debug(f"Saved updated document to {document.path}")
+
+            # INFO log: one line per file when complete
+            status = "updated" if response.changed else "unchanged"
+            logger.info(f"{document.path}: {status}")
 
             return ReviewResult(
                 path=document.path,
@@ -123,7 +136,8 @@ class DocumentReviewer:
             )
 
         except Exception as e:
-            logger.error(f"Failed to review {document.path}: {e}")
+            logger.info(f"{document.path}: error")
+            logger.debug(f"Review failed for {document.path}: {e}")
             return ReviewResult(
                 path=document.path,
                 changed=False,

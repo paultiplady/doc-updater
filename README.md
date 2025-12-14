@@ -127,6 +127,7 @@ Options:
   -n, --dry-run             Show what would be changed without modifying files
   -r, --recursive           Search for documents recursively  [default: True]
   -v, --verbose             Show detailed output
+  -d, --debug               Enable debug logging
   --help                    Show this message and exit
 ```
 

@@ -1,5 +1,6 @@
 """Anthropic Claude LLM provider."""
 
+import logging
 import os
 import re
 
@@ -7,6 +8,8 @@ from anthropic import AsyncAnthropic
 
 from doc_updater.exceptions import ProviderConfigError, ProviderError
 from doc_updater.providers.base import LLMProvider, ReviewRequest, ReviewResponse
+
+logger = logging.getLogger(__name__)
 
 
 class ClaudeProvider(LLMProvider):
@@ -53,6 +56,8 @@ class ClaudeProvider(LLMProvider):
         Raises:
             ProviderError: If the API call fails.
         """
+        logger.debug(f"Sending request to Claude API (model={self.model}, max_tokens={self.max_tokens})")
+
         try:
             message = await self.client.messages.create(
                 model=self.model,
@@ -61,10 +66,15 @@ class ClaudeProvider(LLMProvider):
                 messages=[{"role": "user", "content": self._build_user_message(request)}],
             )
 
+            input_tokens = message.usage.input_tokens
+            output_tokens = message.usage.output_tokens
+            logger.debug(f"Claude API response received (input={input_tokens}, output={output_tokens} tokens)")
+
             return self._parse_response(message, request.content)
         except ProviderConfigError:
             raise
         except Exception as e:
+            logger.debug(f"Claude API error: {type(e).__name__}: {e}")
             raise ProviderError(f"Claude API error: {e}") from e
 
     def _build_user_message(self, request: ReviewRequest) -> str:
@@ -88,10 +98,12 @@ class ClaudeProvider(LLMProvider):
 
         if doc_match:
             updated_content = doc_match.group(1).strip()
+            logger.debug("Parsed updated_document from XML tags")
         else:
             # If no tags, assume the whole response is the document
             # (fallback for simpler responses)
             updated_content = response_text.strip()
+            logger.debug("No XML tags found, using raw response as document")
 
         # Extract summary
         summary_match = re.search(r"<summary>\s*(.*?)\s*</summary>", response_text, re.DOTALL)
@@ -99,6 +111,7 @@ class ClaudeProvider(LLMProvider):
 
         # Determine if content changed
         changed = updated_content.strip() != original_content.strip()
+        logger.debug(f"Content comparison: changed={changed}")
 
         return ReviewResponse(
             updated_content=updated_content,
