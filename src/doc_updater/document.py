@@ -4,9 +4,30 @@ from datetime import date
 from pathlib import Path
 
 import frontmatter
+import yaml
 
 from doc_updater.exceptions import DocumentParseError
 from doc_updater.frontmatter import ReviewConfig
+
+
+class _MultilineYAMLHandler(frontmatter.YAMLHandler):
+    """YAML handler that preserves block scalar style for multiline strings."""
+
+    def export(self, metadata, **kwargs):
+        def _str_representer(dumper, data):
+            if "\n" in data:
+                return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+            return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+        class _Dumper(yaml.SafeDumper):
+            pass
+
+        _Dumper.add_representer(str, _str_representer)
+
+        kwargs["Dumper"] = _Dumper
+        kwargs.setdefault("default_flow_style", False)
+        kwargs.setdefault("sort_keys", False)
+        return yaml.dump(metadata, **kwargs)
 
 
 class Document:
@@ -71,7 +92,7 @@ class Document:
     def save(self) -> None:
         """Write document back to disk."""
         with open(self.path, "w", encoding="utf-8") as f:
-            f.write(frontmatter.dumps(self._post))
+            f.write(frontmatter.dumps(self._post, handler=_MultilineYAMLHandler()))
 
     def should_review(self) -> bool:
         """Check if this document should be reviewed.
