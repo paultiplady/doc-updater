@@ -88,3 +88,99 @@ def test_load_nonexistent_file(temp_dir):
     """Test loading a nonexistent file raises error."""
     with pytest.raises(DocumentParseError):
         Document.load(temp_dir / "nonexistent.md")
+
+
+class TestYAMLRoundTrip:
+    """Tests that save() preserves YAML front-matter formatting."""
+
+    def test_block_scalar_preserved(self, temp_dir):
+        """Block scalar (|) style should survive a save round-trip."""
+        original = (
+            "---\n"
+            "review_context: |\n"
+            "  This document covers deployment options,\n"
+            "  complementing the Simple App doc.\n"
+            "auto_review: true\n"
+            "last_reviewed: 2024-01-01\n"
+            "---\n"
+            "\n"
+            "# Heading\n"
+        )
+        doc_path = temp_dir / "test.md"
+        doc_path.write_text(original)
+
+        doc = Document.load(doc_path)
+        doc.save()
+
+        saved = doc_path.read_text()
+        assert "review_context: |" in saved
+        # Should NOT have the quoted-string form
+        assert "review_context: '" not in saved
+
+    def test_key_order_preserved(self, temp_dir):
+        """Front-matter key order should not change on save."""
+        original = (
+            "---\n"
+            "last_reviewed: 2024-01-01\n"
+            "review_context: some context\n"
+            "auto_review: true\n"
+            "title: Test\n"
+            "---\n"
+            "\n"
+            "# Body\n"
+        )
+        doc_path = temp_dir / "test.md"
+        doc_path.write_text(original)
+
+        doc = Document.load(doc_path)
+        doc.save()
+
+        saved = doc_path.read_text()
+        keys = ["last_reviewed", "review_context", "auto_review", "title"]
+        positions = [saved.index(k) for k in keys]
+        assert positions == sorted(positions), f"Key order changed: {keys}"
+
+    def test_plain_strings_not_blockified(self, temp_dir):
+        """Single-line strings should remain plain (not block scalar)."""
+        original = (
+            "---\n"
+            "title: My Document\n"
+            "review_prompt: Check for outdated info.\n"
+            "auto_review: true\n"
+            "last_reviewed: 2024-01-01\n"
+            "---\n"
+            "\n"
+            "# Body\n"
+        )
+        doc_path = temp_dir / "test.md"
+        doc_path.write_text(original)
+
+        doc = Document.load(doc_path)
+        doc.save()
+
+        saved = doc_path.read_text()
+        assert "title: My Document" in saved
+        assert "review_prompt: Check for outdated info." in saved
+
+    def test_multiline_review_context_content_preserved(self, temp_dir):
+        """Multiline review_context content should be preserved exactly."""
+        context_text = "Line one of context.\nLine two of context.\n"
+        original = (
+            "---\n"
+            "review_context: |\n"
+            "  Line one of context.\n"
+            "  Line two of context.\n"
+            "auto_review: true\n"
+            "last_reviewed: 2024-01-01\n"
+            "---\n"
+            "\n"
+            "# Body\n"
+        )
+        doc_path = temp_dir / "test.md"
+        doc_path.write_text(original)
+
+        doc = Document.load(doc_path)
+        doc.save()
+
+        doc2 = Document.load(doc_path)
+        assert doc2.config.review_context == context_text
